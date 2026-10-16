@@ -5,15 +5,16 @@ library(HHSKwkl)
 library(vegan)
 library(twn)
 
-options(OutDec = ",")
 theme_set(hhskthema())
 
 ## ---- load-data ----
 
-# copy_data(c("biologie.csv", "meetpunten.csv"))
-# bio <-   read_csv2("data/biologie.csv")
-bio <- data_online("biologie.rds")
-meetpunten <- data_online("meetpunten.rds")
+# bio <- data_online("biologie.rds")
+# meetpunten <- data_online("meetpunten.rds")
+# download_data(c("biologie.rds", "meetpunten.rds"))
+bio <- readRDS("data/biologie.rds")
+meetpunten <- readRDS("data/meetpunten.rds")
+
 kp <- sf::st_read("data/waterlichamen.gpkg") %>% filter(OWMNAAM == "Kralingse Plas")
 
 planten_aq <- readxl::read_excel("data/planten_info.xlsx") %>% filter(aquatisch == "aquatisch") %>% pull(naam)
@@ -23,11 +24,7 @@ kp_veg <-
   filter(str_detect(mp, "^VKP"), !str_detect(mp, "^VKP_9"), naam %in% planten_aq) %>% 
   select(mp, datum, naam, waarde = waarde_totaal) %>% 
   mutate(naam = increase_taxonlevel(naam, "Species")) %>% 
-  # group_by(mp, datum, naam) %>% 
-  # summarise(waarde = sum(waarde)) %>% 
-  # ungroup()
   add_jaar() 
-
 
 kp_veg_totaal <- # voor het toevoegen van de totale bedekking aan het plot
   kp_veg %>% 
@@ -66,8 +63,11 @@ kp_veg_kranswieren <- # voor het toevoegen van de totale bedekking aan het plot
   mutate(naam = "Kranswieren") %>% 
   mutate(waarde = pmin(100, waarde))
 
+
+# Plot totaal -------------------------------------------------------------
+
 # pdf("veg_mult_kp_v2.pdf", width = 27, height = 27)
-pdf("vegetatie ontwikkeling KP 2010-2026.pdf", width = 27, height = 27)
+pdf("output/vegetatie ontwikkeling KP 2010-2026.pdf", width = 27, height = 27)
 
 kp_veg %>% 
   # bind_rows(kp_2021) %>% 
@@ -113,7 +113,7 @@ dev.off()
 
 # Plots per soort ---------------------------------------------------------
 
-pdf("vegetatie ontwikkeling KP 2010-2026 - per soort.pdf", width = 10, height = 10)
+pdf("output/vegetatie ontwikkeling KP 2010-2026 - per soort.pdf", width = 10, height = 10)
 
 # KP totaal
 
