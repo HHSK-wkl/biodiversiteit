@@ -61,7 +61,8 @@ veg_kranswieren <- # voor het toevoegen van de totale bedekking aan het plot
   summarise(waarde = sum(waarde)) %>% 
   ungroup() %>% 
   mutate(naam = "Kranswieren") %>% 
-  mutate(waarde = pmin(100, waarde))
+  mutate(waarde = pmin(100, waarde)) %>% 
+  mutate(waarde = replace_values(waarde, 0  ~ NA))
 
 # Plots per soort ---------------------------------------------------------
 
@@ -76,7 +77,7 @@ veg_totaal %>%
   geom_sf(fill = NA, colour = "grey60", data = contour) + 
   geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = puntgrootte, stroke = 0.3) +
   scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage"), limits = c(0,100)) +
   hhskthema_kaart_oud() +
   facet_wrap(vars(jaar), labeller = label_wrap_gen(15), nrow = aantal_rijen) +
   labs(title = glue("Bedekking {naam_water} - Totaal")
@@ -92,7 +93,7 @@ veg_totaal_excl_chara %>%
   geom_sf(fill = NA, colour = "grey60", data = contour) + 
   geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = puntgrootte, stroke = 0.3) +
   scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage"), limits = c(0,100)) +
   hhskthema_kaart_oud() +
   facet_wrap(vars(jaar), labeller = label_wrap_gen(15), nrow = aantal_rijen) +
   labs(title = glue("Bedekking {naam_water} - Totaal zonder kranswieren")
@@ -108,7 +109,7 @@ veg_kranswieren %>%
   geom_sf(fill = NA, colour = "grey60", data = contour) + 
   geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = puntgrootte, stroke = 0.3) +
   scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage"), limits = c(0,100)) +
   hhskthema_kaart_oud() +
   facet_wrap(vars(jaar), labeller = label_wrap_gen(15), nrow = aantal_rijen) +
   labs(title = glue("Bedekking {naam_water} - Kranswieren")
@@ -127,7 +128,7 @@ veg_plot <-
     .default = naam
   )) %>%
   summarise(waarde = sum(waarde), .by = c(mp, jaar, naam)) %>% 
-  complete(mp, jaar, naam)
+  complete(mp, jaar, naam) 
 
 namen <- veg_plot %>% pull(naam) %>% unique() %>%  sort()
 
