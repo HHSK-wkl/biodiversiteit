@@ -1,197 +1,193 @@
 # Libraries
 library(tidyverse)
-library(lubridate)
 library(HHSKwkl)
-library(vegan)
 library(twn)
+library(glue)
 
-# options(OutDec = ",")
 theme_set(hhskthema())
 
 ## ---- load-data ----
 
-download_data(c("biologie.rds", "meetpunten.rds"))
+# bio <- data_online("biologie.rds")
+# meetpunten <- data_online("meetpunten.rds")
+# download_data(c("biologie.rds", "meetpunten.rds"))
 bio <- readRDS("data/biologie.rds")
 meetpunten <- readRDS("data/meetpunten.rds")
 
-planten_aq <- readxl::read_excel("data/planten_info.xlsx") %>% filter(aquatisch == "aquatisch") %>% pull(naam)
-planten_submers <- readxl::read_excel("data/planten_info.xlsx") %>% filter(bedekkingslaag == "submers") %>% pull(naam)
+naam_water <- "Bergse Plassen"
 
-bp <- sf::st_read("data/waterlichamen.gpkg") %>% filter(OWMNAAM == "Bergse Plassen")
+contour <- sf::st_read("data/waterlichamen.gpkg") %>% filter(OWMNAAM == "Bergse Plassen")
 
-bp_mp <- meetpunten %>% 
-  filter(str_detect(mp, "^VBV|^VBA")) %>% 
-  sf::st_as_sf(coords = c("x", "y"), crs = 28992,  remove = FALSE) %>% 
-  sf::st_intersection(bp)
+planten_aq <- readxl::read_excel("data/planten_info.xlsx") %>% 
+  filter(aquatisch == "aquatisch",
+         bedekkingslaag != "kroos",
+         bedekkingslaag != "alg") %>% 
+  pull(naam)
 
-bp_veg <- 
+veg <- 
   bio %>% 
-  filter(str_detect(mp, "^VBV|^VBA"), !str_detect(mp, "^VBV_9|^VBA_9"), naam %in% planten_submers) %>% 
+  filter(str_detect(mp, "^VBV|^VBA"),
+         naam %in% planten_aq) %>% 
   select(mp, datum, naam, waarde = waarde_totaal) %>% 
   mutate(naam = increase_taxonlevel(naam, "Species")) %>% 
-  group_by(mp, datum, naam) %>%
-  summarise(waarde = sum(waarde)) %>%
+  add_jaar() %>% 
+  filter(!str_detect(naam, "Butomus"),
+         !str_detect(naam, "Sagittaria"))
+
+veg_totaal <- # voor het toevoegen van de totale bedekking aan het plot
+  veg %>% 
+  group_by(mp, datum, jaar) %>% 
+  summarise(waarde = sum(waarde)) %>% 
+  mutate(naam = "Totaal") %>% 
+  mutate(waarde = pmin(100, waarde))
+
+
+veg_totaal_excl_chara <- # voor het toevoegen van de totale bedekking aan het plot
+  veg %>% 
+  filter(twn::increase_taxonlevel(naam, "Familia") != "Characeae") %>% 
+  group_by(mp, datum, jaar) %>% 
+  summarise(waarde = sum(waarde)) %>% 
   ungroup() %>% 
-  add_jaar() 
+  mutate(naam = "Totaal zonder kranswieren") %>% 
+  mutate(waarde = pmin(100, waarde))
 
-bp_veg_totaal <- 
-  bp_veg %>% 
-  filter(jaar > 2012) %>% 
-  filter(!str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
-         !str_detect(naam, "Enteromorpha")) %>% 
-  mutate(naam = case_when(
-    naam == "Zannichellia" ~ "Zannichellia palustris [1]",
-    TRUE ~ naam
-  )) %>% 
+veg_kranswieren <- # voor het toevoegen van de totale bedekking aan het plot
+  veg %>% 
+  filter(twn::increase_taxonlevel(naam, "Familia") == "Characeae") %>% 
   group_by(mp, datum, jaar) %>% 
   summarise(waarde = sum(waarde)) %>% 
-  mutate(naam = "Totaal") %>% 
-  mutate(waarde = pmin(waarde, 100))
-
-pdf("veg_mult_bp.pdf", width = 30, height = 30)
-
-
-
-bp_veg %>% 
-  filter(jaar > 2012) %>% 
-  filter(!str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
-         !str_detect(naam, "Enteromorpha")) %>% 
-  mutate(naam = case_when(
-    naam == "Zannichellia" ~ "Zannichellia palustris [1]",
-    TRUE ~ naam
-  )) %>% 
-  bind_rows(bp_veg_totaal) %>% 
-  inner_join(bp_mp) %>% 
-  group_by(naam) %>% 
-  filter(n() > 30) %>% 
   ungroup() %>% 
-  # filter(jaar == 2014, naam == "Chara vulgaris") %>% 
-  sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
-  mutate(naam = fct_reorder(naam, naam, .fun = length, .desc = TRUE)) %>% 
-  ggplot() + 
-  geom_sf(fill = NA, colour = "grey60", data = bp) + 
-  geom_sf(aes(fill = waarde), shape = 21) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
-  hhskthema_kaart_oud() +
-  facet_grid(cols = vars(jaar), rows = vars(naam), labeller = label_wrap_gen(15)) +
-  labs(title = "Bedekking Bergse Plassen",
-       caption = "Alleen soorten die meer dan 30 keer zijn aangetroffen") +
-  theme(legend.position = "top")
+  mutate(naam = "Kranswieren") %>% 
+  mutate(waarde = pmin(100, waarde))
 
-dev.off()
+# Plots per soort ---------------------------------------------------------
 
+pdf(glue("output/vegetatie ontwikkeling {naam_water} 2008-2026 - per soort.pdf"), width = 18, height = 10)
 
-# bp_veg_totaal <- 
-#   bp_veg %>% 
-#   filter(jaar <= 2012) %>% 
-#   filter(!str_detect(naam, "Vaucheria"),
-#          !str_detect(naam, "Sagittaria"),
-#          !str_detect(naam, "Enteromorpha")) %>% 
-#   mutate(naam = case_when(
-#     naam == "Zannichellia" ~ "Zannichellia palustris [1]",
-#     TRUE ~ naam
-#   )) %>% 
-#   group_by(mp, datum, jaar) %>% 
-#   summarise(waarde = sum(waarde)) %>% 
-#   mutate(naam = "Totaal") %>% 
-#   mutate(waarde = ifelse(waarde > 100, 100, waarde))
-# 
-# pdf("veg_mult_bp_tm_2012.pdf", width = 20, height = 20)
-# 
-# 
-# 
-# bp_veg %>% 
-#   filter(jaar <= 2012) %>% 
-#   filter(!str_detect(naam, "Vaucheria"),
-#          !str_detect(naam, "Sagittaria"),
-#          !str_detect(naam, "Enteromorpha")) %>% 
-#   mutate(naam = case_when(
-#     naam == "Zannichellia" ~ "Zannichellia palustris [1]",
-#     TRUE ~ naam
-#   )) %>% 
-#   bind_rows(bp_veg_totaal) %>% 
-#   inner_join(bp_mp) %>% 
-#   group_by(naam) %>% 
-#   filter(n() > 30) %>% 
-#   ungroup() %>% 
-#   # filter(jaar == 2014, naam == "Chara vulgaris") %>% 
-#   sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
-#   mutate(naam = fct_reorder(naam, naam, .fun = length, .desc = TRUE)) %>% 
-#   ggplot() + 
-#   geom_sf(fill = NA, colour = "grey60", data = bp) + 
-#   geom_sf(aes(fill = waarde), shape = 21) +
-#   scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
-#   hhskthema_kaart() +
-#   facet_grid(cols = vars(jaar), rows = vars(naam), labeller = label_wrap_gen(15)) +
-#   labs(title = "Bedekking Bergse Plassen",
-#        caption = "Alleen soorten die meer dan 30 keer zijn aangetroffen") +
-#   theme(legend.position = "top")
-# 
-# dev.off()
+# Totaal
 
-bp_veg_totaal %>% 
-  inner_join(bp_mp) %>% 
+veg_totaal %>% 
+  left_join(meetpunten) %>% 
   sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
   ggplot() + 
-  geom_sf(fill = NA, colour = "grey60", data = bp) + 
-  geom_sf(aes(fill = waarde), shape = 21, size = 2) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
-  hhskthema_kaart_oud() +
-  facet_wrap(vars(fct_rev(as.character(jaar))), labeller = label_wrap_gen(15)) +
-  labs(title = "Bedekking Bergse Plassen") +
-  theme(legend.position = "top")
-
-bp_veg_totaal_excl_chara <- 
-  bp_veg %>% 
-  filter(jaar > 2009) %>%
-  filter(!str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
-         !str_detect(naam, "Enteromorpha"),
-         !str_detect(naam, "Lemna"),
-         !str_detect(naam, "Spirodela"),
-         !str_detect(naam, "FLAB"),
-         !str_detect(naam, "Wolffia"),
-         !str_detect(naam, "Hydrodictyon"),
-         !str_detect(naam, "Chara"),
-         !str_detect(naam, "Nitellopsis"),
-         !str_detect(naam, "Nitella")) %>% 
-  mutate(naam = case_when(
-    naam == "Zannichellia" ~ "Zannichellia palustris [1]",
-    TRUE ~ naam
-  )) %>% 
-  group_by(mp, datum, jaar) %>% 
-  summarise(waarde = sum(waarde)) %>% 
-  mutate(naam = "Totaal") %>% 
-  mutate(waarde = pmin(waarde, 100))  
-
-bp_veg_totaal_excl_chara %>% 
-  inner_join(bp_mp) %>% 
-  sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
-  ggplot() + 
-  geom_sf(fill = NA, colour = "grey60", data = bp) + 
-  geom_sf(aes(fill = waarde), shape = 21, size = 2) +
-  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
-  hhskthema_kaart_oud() +
-  facet_wrap(vars(fct_rev(as.character(jaar))), labeller = label_wrap_gen(15)) +
-  labs(title = "Bedekking Bergse Plassen - zonder kranswieren") +
-  theme(legend.position = "top")
-
-bp_veg %>% 
-  filter(jaar > 2009) %>%
-  filter(str_detect(naam, "Chara") | str_detect(naam, "Nitellopsis") | str_detect(naam, "Nitella")) %>% 
-  group_by(mp, datum, jaar) %>% 
-  summarise(waarde = sum(waarde)) %>% 
-  mutate(naam = "Totaal") %>% 
-  mutate(waarde = pmin(waarde, 100))  %>% 
-  inner_join(bp_mp) %>% 
-  sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
-  ggplot() + 
-  geom_sf(fill = NA, colour = "grey60", data = bp) + 
-  geom_sf(aes(fill = waarde), shape = 21, size = 2) +
+  geom_sf(fill = NA, colour = "grey60", data = contour) + 
+  geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = 2.7, stroke = 0.3) +
+  scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
   scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
   hhskthema_kaart_oud() +
   facet_wrap(vars(jaar), labeller = label_wrap_gen(15)) +
-  labs(title = "Bedekking Bergse Plassen - kranswieren") +
+  labs(title = glue("Bedekking {naam_water} - Totaal")
+  ) +
   theme(legend.position = "top")
+
+# Zonder kranswieren
+
+veg_totaal_excl_chara %>% 
+  left_join(meetpunten) %>% 
+  sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
+  ggplot() + 
+  geom_sf(fill = NA, colour = "grey60", data = contour) + 
+  geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = 2.7, stroke = 0.3) +
+  scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
+  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+  hhskthema_kaart_oud() +
+  facet_wrap(vars(jaar), labeller = label_wrap_gen(15)) +
+  labs(title = glue("Bedekking {naam_water} - Totaal zonder kranswieren")
+  ) +
+  theme(legend.position = "top")
+
+# Kranswieren
+
+veg_kranswieren %>% 
+  left_join(meetpunten) %>% 
+  sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
+  ggplot() + 
+  geom_sf(fill = NA, colour = "grey60", data = contour) + 
+  geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = 2.7, stroke = 0.3) +
+  scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
+  scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+  hhskthema_kaart_oud() +
+  facet_wrap(vars(jaar), labeller = label_wrap_gen(15)) +
+  labs(title = glue("Bedekking {naam_water} - Kranswieren")
+  ) +
+  theme(legend.position = "top")
+
+# Soorten
+
+veg_plot <- 
+  veg %>% 
+  mutate(naam = case_when(
+    str_detect(naam, "Callitriche") ~ "Callitriche",
+    str_detect(naam, "Nymphaea") ~ "Nymphaea",
+    str_detect(naam, "Nitella") ~ "Nitella",
+    .default = naam
+  )) %>%
+  filter(!(year(datum) == 2022 & month(datum) %in% c(5, 9))) %>% 
+  summarise(waarde = sum(waarde), .by = c(mp, jaar, naam)) %>% 
+  complete(mp, jaar, naam)
+
+namen <- veg_plot %>% pull(naam) %>% unique() %>%  sort()
+
+for (naam_sel in namen){
+  
+  p <- 
+    veg_plot %>% 
+    complete(mp, jaar, naam) %>% 
+    filter(naam == naam_sel) %>% 
+    left_join(meetpunten) %>% 
+    sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
+    ggplot() + 
+    geom_sf(fill = NA, colour = "grey60", data = contour) + 
+    geom_sf(aes(fill = waarde, color = waarde), shape = 21, size = 2.7, stroke = 0.3) +
+    scale_color_continuous(palette = c("grey30", "grey30"), na.value = NA, guide = guide_none()) +
+    scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage"), na.value = NA, limits = c(0,100)) +
+    hhskthema_kaart_oud() +
+    facet_wrap(vars(jaar), labeller = label_wrap_gen(15)) +
+    labs(title = glue("Bedekking {naam_water} - {naam_sel} - {twn_localname(naam_sel)}", .na = "")
+    ) +
+    theme(legend.position = "top")
+  
+  print(p)
+  
+}
+
+dev.off()
+
+# Plot totaal -------------------------------------------------------------
+
+# pdf(glue("output/vegetatie ontwikkeling {naam_water} 2008-2026.pdf"), width = 30, height = 30)
+# 
+# veg %>% 
+#   filter(naam %in% planten_aq) %>% 
+#   mutate(naam = case_when(
+#     naam == "Zannichellia" ~ "Zannichellia palustris [1]",
+#     TRUE ~ naam
+#   )) %>% 
+#   group_by(mp, datum, naam, jaar) %>% 
+#   summarise(waarde = sum(waarde)) %>% 
+#   ungroup() %>% 
+#   bind_rows(veg_totaal) %>% 
+#   bind_rows(veg_totaal_excl_chara) %>% 
+#   bind_rows(veg_kranswieren) %>% 
+#   group_by(naam) %>% 
+#   filter(n() > 10) %>% 
+#   ungroup() %>% 
+#   mutate(naam = fct_reorder(naam, naam, .fun = length, .desc = TRUE)) %>% 
+#   filter(!(year(datum) == 2022 & month(datum) %in% c(5, 9))) %>% 
+#   # mutate(jaar = case_when(
+#   #   jaar == 2022 ~ paste0(jaar, " - ", lubridate::month(datum, label = FALSE)),
+#   #   TRUE ~ as.character(jaar)
+#   # )) %>% 
+#   left_join(meetpunten) %>% 
+#   sf::st_as_sf(coords = c("x", "y"), crs = 28992) %>% 
+#   ggplot() + 
+#   geom_sf(fill = NA, colour = "grey60", data = contour) + 
+#   geom_sf(aes(fill = waarde), shape = 21) +
+#   scale_fill_viridis_c(option = "B", direction = -1, guide = guide_legend(title = "Bedekkingspercentage")) +
+#   hhskthema_kaart_oud() +
+#   facet_grid(cols = vars(jaar), rows = vars(naam), labeller = label_wrap_gen(15)) +
+#   labs(title = paste("Bedekking", naam_water),
+#        caption = "Alleen soorten die meer dan 10 keer zijn aangetroffen") +
+#   theme(legend.position = "top")
+# 
+# dev.off()
