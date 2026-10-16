@@ -1,8 +1,6 @@
 # Libraries
 library(tidyverse)
-library(lubridate)
 library(HHSKwkl)
-library(vegan)
 library(twn)
 
 theme_set(hhskthema())
@@ -22,7 +20,7 @@ planten_aq <- readxl::read_excel("data/planten_info.xlsx") %>% filter(aquatisch 
 veg <- 
   bio %>% 
   filter(str_detect(mp, "^VKP"), 
-         # !str_detect(mp, "^VKP_9"), 
+         # !str_detect(mp, "^VKP_9"),
          naam %in% planten_aq) %>% 
   select(mp, datum, naam, waarde = waarde_totaal) %>% 
   mutate(naam = increase_taxonlevel(naam, "Species")) %>% 
@@ -30,11 +28,13 @@ veg <-
 
 veg_totaal <- # voor het toevoegen van de totale bedekking aan het plot
   veg %>% 
-  filter(!str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
+  filter(!str_detect(naam, "Cladophora"),
          !str_detect(naam, "Enteromorpha"),
+         !str_detect(naam, "Hydrodictyon"),
          !str_detect(naam, "Lemna"),
-         !str_detect(naam, "Spirodela")) %>% 
+         !str_detect(naam, "Sagittaria"),
+         !str_detect(naam, "Spirodela"),
+         !str_detect(naam, "Vaucheria"),) %>% 
   group_by(mp, datum, jaar) %>% 
   summarise(waarde = sum(waarde)) %>% 
   mutate(naam = "Totaal") %>% 
@@ -43,11 +43,13 @@ veg_totaal <- # voor het toevoegen van de totale bedekking aan het plot
 
 veg_totaal_excl_chara <- # voor het toevoegen van de totale bedekking aan het plot
   veg %>% 
-  filter(!str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
+  filter(!str_detect(naam, "Cladophora"),
          !str_detect(naam, "Enteromorpha"),
+         !str_detect(naam, "Hydrodictyon"),
          !str_detect(naam, "Lemna"),
-         !str_detect(naam, "Spirodela")) %>% 
+         !str_detect(naam, "Sagittaria"),
+         !str_detect(naam, "Spirodela"),
+         !str_detect(naam, "Vaucheria"),) %>% 
   filter(twn::increase_taxonlevel(naam, "Familia") != "Characeae") %>% 
   group_by(mp, datum, jaar) %>% 
   summarise(waarde = sum(waarde)) %>% 
@@ -75,11 +77,12 @@ veg %>%
   # bind_rows(kp_2021) %>% 
   filter(naam %in% planten_aq) %>% 
   filter(!str_detect(naam, "Cladophora"),
-         !str_detect(naam, "Vaucheria"),
-         !str_detect(naam, "Sagittaria"),
          !str_detect(naam, "Enteromorpha"),
+         !str_detect(naam, "Hydrodictyon"),
          !str_detect(naam, "Lemna"),
-         !str_detect(naam, "Spirodela")) %>% 
+         !str_detect(naam, "Sagittaria"),
+         !str_detect(naam, "Spirodela"),
+         !str_detect(naam, "Vaucheria"),) %>% 
   mutate(naam = case_when(
     naam == "Zannichellia" ~ "Zannichellia palustris [1]",
     TRUE ~ naam
